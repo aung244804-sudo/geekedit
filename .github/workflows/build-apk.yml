@@ -34,8 +34,11 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
+      - name: Initialize or link Expo project
+        run: eas init --account aung244804-sudo --non-interactive
+
       - name: Build APK
-        run: eas build --platform android --profile preview --non-interactive
+        run: eas build --platform android --profile preview --non-interactive --no-wait
 
       - name: Build summary
         if: always()
