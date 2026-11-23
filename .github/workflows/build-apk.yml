@@ -19,15 +19,36 @@ jobs:
       - name: Install packages
         run: npm install
       - name: Generate Android project
-        run: npx expo prebuild --platform android --non-interactive
+        run: CI=1 npx expo prebuild --platform android
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+      - name: Add Maven Central mirror
+        working-directory: android
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ("settings.gradle", "build.gradle", "app/build.gradle"):
+              p = Path(name)
+              if p.exists():
+                  s = p.read_text()
+                  mirror = 'maven { url "https://maven-central.storage-download.googleapis.com/maven2" }'
+                  if mirror not in s:
+                      s = s.replace("mavenCentral()", mirror + "\\n            mavenCentral()")
+                      p.write_text(s)
+          PY
       - name: Build release APK
         working-directory: android
-        run: chmod +x gradlew && ./gradlew assembleRelease
+        run: |
+          chmod +x gradlew
+          for attempt in 1 2 3; do
+            ./gradlew assembleRelease --no-daemon && exit 0
+            echo "Gradle attempt $attempt failed; retrying after Maven rate-limit cooldown..."
+            sleep 30
+          done
+          exit 1
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
