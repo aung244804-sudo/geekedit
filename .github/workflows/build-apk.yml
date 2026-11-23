@@ -36,7 +36,7 @@ jobs:
                   s = p.read_text()
                   mirror = 'maven { url "https://maven-central.storage-download.googleapis.com/maven2" }'
                   if mirror not in s:
-                      s = s.replace("mavenCentral()", mirror + "\\n            mavenCentral()")
+                      s = s.replace("mavenCentral()", mirror + chr(10) + "            mavenCentral()")
                       p.write_text(s)
           PY
       - name: Build release APK
