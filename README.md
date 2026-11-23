@@ -1,26 +1,22 @@
-# Edit Geek
+# Edit Geek — Android
 
-Expo React Native Android starter for a free photo-editing app.
+Expo React Native project for a free photo editing app.
 
-## Build an APK with GitHub Actions
+## Build APK
+1. Open **Actions** in this repository.
+2. Select **Edit Geek Android APK**.
+3. Tap **Run workflow** on the main branch.
+4. When the workflow succeeds, download **edit-geek-android-apk** from its Artifacts section.
 
-1. Create an Expo account and an Expo access token.
-2. In GitHub, open **Settings → Secrets and variables → Actions**.
-3. Add a repository secret named `EXPO_TOKEN`.
-4. Open **Actions → Edit Geek Android APK → Run workflow**.
-5. Open the EAS build link in the workflow logs or your Expo dashboard to download the APK.
-
-A push to `main` also triggers the workflow.
+The workflow builds a release APK directly with Gradle on GitHub Actions. No Expo token or paid EAS service is required.
 
 ## Local development
-
 ```bash
 npm install
 npx expo start
 ```
 
-## Current implementation status
+## Current status
+Implemented: photo gallery picker, camera capture, brush/eraser mask overlay, undo/clear, prompt field, local settings, history list, and save/share of the original photo.
 
-The starter currently includes gallery selection, camera capture, navigation, a stainless-steel visual theme, and image sharing. The AI inpainting engine, prompt-based replacement, brush mask editor, offline ONNX model, persistent edit history, and language switching still need implementation and integration. The UI does not pretend those AI operations are already working.
-
-No login, subscription, or paywall is included.
+Not yet implemented: an actual inpainting model/server, applying the mask to a returned AI result, real before/after comparison, and optional watermark compositing. The AI adapter intentionally reports unavailable instead of pretending to edit. No login, paywall, or subscription is present.
