@@ -265,26 +265,31 @@ private fun EditorScreen() {
     }
 }
 
-private fun saveBitmap(context: android.content.Context, bitmap: Bitmap): Boolean = try {
-    val values = ContentValues().apply {
-        put(MediaStore.Images.Media.DISPLAY_NAME, "EditGeek-${System.currentTimeMillis()}.png")
-        put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/EditGeek")
-        put(MediaStore.Images.Media.IS_PENDING, 1)
-    }
-    val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        ?: return false
-    val written = context.contentResolver.openOutputStream(uri)?.use { output ->
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
-    } ?: false
-    if (written) {
-        val completed = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
-        context.contentResolver.update(uri, completed, null, null)
-        true
-    } else {
-        context.contentResolver.delete(uri, null, null)
+private fun saveBitmap(context: android.content.Context, bitmap: Bitmap): Boolean {
+    return try {
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "EditGeek-${System.currentTimeMillis()}.png")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/EditGeek")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        if (uri == null) {
+            false
+        } else {
+            val written = context.contentResolver.openOutputStream(uri)?.use { output ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+            } ?: false
+            if (written) {
+                val completed = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
+                context.contentResolver.update(uri, completed, null, null)
+                true
+            } else {
+                context.contentResolver.delete(uri, null, null)
+                false
+            }
+        }
+    } catch (_: Exception) {
         false
     }
-} catch (_: Exception) {
-    false
 }
