@@ -422,8 +422,10 @@ private fun saveBitmap(context: android.content.Context, bitmap: Bitmap): Boolea
 /** Decode a user-selected image with EXIF orientation and bounded memory use. */
 private fun decodeOrientedBitmap(context: android.content.Context, uri: Uri): Bitmap? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-        ?: return null
+    // decodeStream returns null when inJustDecodeBounds=true; only the stream itself
+    // should be checked here, then validate the dimensions populated by BitmapFactory.
+    val boundsStream = context.contentResolver.openInputStream(uri) ?: return null
+    boundsStream.use { stream -> BitmapFactory.decodeStream(stream, null, bounds) }
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
     var sample = 1
