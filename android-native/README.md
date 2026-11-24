@@ -7,13 +7,14 @@ This is a native Kotlin + Jetpack Compose Android implementation alongside the e
 - Import an image through Android's system photo picker (image-only selection).
 - Decode images with a bounded 2048-pixel maximum dimension and apply EXIF orientation.
 - Rotate the selected bitmap by 90 degrees.
+- Adjust brightness, contrast, and saturation fully offline, with reset/apply controls.
 - Paint, hide, undo, and clear a visual mask overlay.
 - Save the current bitmap to Pictures/EditGeek.
-- Provide an explicit AI-unavailable state; no remote upload is performed by the placeholder AI engine.
+- Provide an explicit AI-unavailable state; no remote upload is performed by the placeholder AI engine. Export saves the current locally adjusted bitmap.
 
 ## Not yet implemented
 
-The local diffusion/inpainting model and real object removal, generative refill, image generation, object replacement, and remote inference API are not implemented in this native scaffold. The painted mask remains a visual guide only and is not yet converted into an inference mask. Do not present the mask overlay as an AI-edited result. A model/runtime and a documented, consent-based inference contract must be integrated and benchmarked before those features can be enabled.
+The local diffusion/inpainting model and real object removal, generative refill, image generation, object replacement, and remote inference API are not implemented in this native scaffold. The native app is currently a usable offline photo-adjustment editor, not a finished AI editor. The painted mask remains a visual guide only and is not yet converted into an inference mask. Do not present the mask overlay as an AI-edited result. A model/runtime and a documented, consent-based inference contract must be integrated and benchmarked before those features can be enabled.
 
 ## Build
 
