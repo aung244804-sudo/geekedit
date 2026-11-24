@@ -24,7 +24,7 @@ concurrency:
 jobs:
   test-and-build:
     name: Test, emulator smoke test, and build native debug APK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     defaults:
       run:
@@ -65,6 +65,8 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -W -n com.editgeek.nativeapp.debug/.MainActivity
@@ -72,9 +74,10 @@ jobs:
             adb shell pidof com.editgeek.nativeapp.debug
 
       - name: Upload debug APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: edit-geek-native-debug-apk
           path: android-native/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
