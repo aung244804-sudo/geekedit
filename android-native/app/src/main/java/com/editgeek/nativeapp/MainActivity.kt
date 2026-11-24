@@ -38,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -99,6 +100,10 @@ private fun EditorScreen() {
     val scope = rememberCoroutineScope()
     val editorState: EditorViewModel = viewModel()
     var bitmap by editorState.bitmapState
+    var originalBitmap by editorState.originalBitmapState
+    var brightness by editorState.brightnessState
+    var contrast by editorState.contrastState
+    var saturation by editorState.saturationState
     var prompt by editorState.promptState
     var showMask by editorState.showMaskState
     var busy by editorState.busyState
@@ -115,6 +120,10 @@ private fun EditorScreen() {
                 }
                 if (decoded != null) {
                     bitmap = decoded
+                    originalBitmap = decoded
+                    brightness = 0f
+                    contrast = 1f
+                    saturation = 1f
                     strokes.clear()
                     showMask = true
                 } else {
@@ -145,9 +154,12 @@ private fun EditorScreen() {
                 }
                 OutlinedButton(
                     onClick = {
-                        bitmap?.let { original ->
+                        bitmap?.let { current ->
                             val matrix = Matrix().apply { postRotate(90f) }
-                            bitmap = Bitmap.createBitmap(original, 0, 0, original.width, original.height, matrix, true)
+                            bitmap = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
+                            originalBitmap?.let { source ->
+                                originalBitmap = Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+                            }
                             strokes.clear()
                         }
                     },
@@ -211,6 +223,61 @@ private fun EditorScreen() {
                 }
             }
 
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Panel),
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("OFFLINE ADJUSTMENTS", color = Violet, fontWeight = FontWeight.Bold)
+                    Text("Brightness  ${brightness.toInt()}", color = SoftWhite, style = MaterialTheme.typography.bodySmall)
+                    Slider(value = brightness, onValueChange = { brightness = it }, valueRange = -60f..60f, enabled = bitmap != null && !busy)
+                    Text("Contrast  ${(contrast * 100).toInt()}%", color = SoftWhite, style = MaterialTheme.typography.bodySmall)
+                    Slider(value = contrast, onValueChange = { contrast = it }, valueRange = 0.5f..1.8f, enabled = bitmap != null && !busy)
+                    Text("Saturation  ${(saturation * 100).toInt()}%", color = SoftWhite, style = MaterialTheme.typography.bodySmall)
+                    Slider(value = saturation, onValueChange = { saturation = it }, valueRange = 0f..2f, enabled = bitmap != null && !busy)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = {
+                                bitmap = originalBitmap
+                                brightness = 0f
+                                contrast = 1f
+                                saturation = 1f
+                            },
+                            enabled = originalBitmap != null && !busy,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Reset") }
+                        Button(
+                            onClick = {
+                                val source = originalBitmap ?: return@Button
+                                if (busy) return@Button
+                                busy = true
+                                scope.launch {
+                                    val result = runCatching {
+                                        withContext(Dispatchers.Default) {
+                                            applyImageAdjustments(source, brightness, contrast, saturation)
+                                        }
+                                    }.getOrNull()
+                                    if (result != null) {
+                                        bitmap = result
+                                        Toast.makeText(context, "Adjustments applied on device.", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Could not adjust this image. Try a smaller photo.", Toast.LENGTH_LONG).show()
+                                    }
+                                    busy = false
+                                }
+                            },
+                            enabled = bitmap != null && !busy,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Ink)
+                        ) { Text(if (busy) "Working…" else "Apply adjustments", fontWeight = FontWeight.Bold) }
+                    }
+                }
+            }
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(onClick = { showMask = !showMask }, modifier = Modifier.weight(1f), enabled = bitmap != null) {
                     Text(if (showMask) "Hide mask" else "Show mask")
@@ -267,7 +334,7 @@ private fun EditorScreen() {
             }
 
             Text(
-                "Offline editing tools are local. AI generation, object removal and generative refill need a verified model or a consent-based server connection; no photo is uploaded by this screen.",
+                "Brightness, contrast and saturation work offline. AI object removal and generative refill still need a model or a secure server connection. No photo is uploaded by this screen.",
                 color = Muted,
                 style = MaterialTheme.typography.bodySmall
             )
