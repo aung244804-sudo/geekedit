@@ -43,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -61,6 +62,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -109,6 +111,7 @@ private fun EditorScreen() {
     var busy by editorState.busyState
     val strokes = editorState.strokes
     val engine = remember { AiEngine() }
+    var apiKey by remember { mutableStateOf("") }
 
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -291,12 +294,23 @@ private fun EditorScreen() {
             }
 
             OutlinedTextField(
+                value = apiKey,
+                onValueChange = { apiKey = it.trim() },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Pollinations API key") },
+                placeholder = { Text("Paste your personal API key") },
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true,
+                supportingText = { Text("Key stays in this screen's memory and is not saved to disk.") }
+            )
+
+            OutlinedTextField(
                 value = prompt,
                 onValueChange = { prompt = MaskRules.limitPromptInput(it) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Describe the edit") },
                 placeholder = { Text("Remove the sign and refill the wall…") },
-                supportingText = { Text("${prompt.codePointCount(0, prompt.length)}/500 characters · AI generation is not connected yet") },
+                supportingText = { Text("${prompt.codePointCount(0, prompt.length)}/500 characters · Prompt-based AI edit") },
                 maxLines = 2
             )
 
@@ -304,15 +318,40 @@ private fun EditorScreen() {
                 Button(
                     onClick = {
                         val validatedPrompt = MaskRules.normalizedPrompt(prompt)
-                        if (validatedPrompt.isBlank()) {
-                            Toast.makeText(context, "Describe the edit first.", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, engine.unavailableMessage(), Toast.LENGTH_LONG).show()
+                        val source = bitmap
+                        when {
+                            source == null -> Toast.makeText(context, "Import a photo first.", Toast.LENGTH_SHORT).show()
+                            validatedPrompt.isBlank() -> Toast.makeText(context, "Describe the edit first.", Toast.LENGTH_SHORT).show()
+                            apiKey.isBlank() -> Toast.makeText(context, "Enter your Pollinations API key first.", Toast.LENGTH_LONG).show()
+                            busy -> Unit
+                            else -> {
+                                busy = true
+                                scope.launch {
+                                    try {
+                                        val result = withContext(Dispatchers.IO) {
+                                            engine.editImage(source, validatedPrompt, apiKey)
+                                        }
+                                        bitmap = result
+                                        originalBitmap = result
+                                        brightness = 0f
+                                        contrast = 1f
+                                        saturation = 1f
+                                        strokes.clear()
+                                        Toast.makeText(context, "AI edit complete. Review it before saving.", Toast.LENGTH_LONG).show()
+                                    } catch (error: Exception) {
+                                        val message = error.message?.take(220) ?: "AI edit failed. Check your connection and API key."
+                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                    } finally {
+                                        busy = false
+                                    }
+                                }
+                            }
                         }
                     },
+                    enabled = !busy,
                     modifier = Modifier.weight(1.2f),
                     colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Ink)
-                ) { Text("AI Edit", fontWeight = FontWeight.Bold) }
+                ) { Text(if (busy) "Editing…" else "AI Edit", fontWeight = FontWeight.Bold) }
                 OutlinedButton(
                     onClick = {
                         val current = bitmap
@@ -334,7 +373,7 @@ private fun EditorScreen() {
             }
 
             Text(
-                "Brightness, contrast and saturation work offline. AI object removal and generative refill still need a model or a secure server connection. No photo is uploaded by this screen.",
+                "Brightness, contrast and saturation work offline. Tapping AI Edit uploads the current photo to Pollinations for prompt-based editing and may use your account quota. The purple brush overlay is visual-only in this version; it is not sent as an inpainting mask. Do not submit private photos unless you accept the provider's terms.",
                 color = Muted,
                 style = MaterialTheme.typography.bodySmall
             )
