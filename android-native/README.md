@@ -1,25 +1,25 @@
 # Edit Geek Native Android
 
-This is a native Kotlin + Jetpack Compose Android implementation alongside the existing Expo app. It does not replace or delete the current app.
+Native Kotlin + Jetpack Compose Android editor alongside the existing Expo app.
 
-## Current native scope
+## Implemented
 
-- Import an image through Android's system photo picker (image-only selection).
-- Decode images with a bounded 2048-pixel maximum dimension and apply EXIF orientation.
-- Rotate the selected bitmap by 90 degrees.
-- Adjust brightness, contrast, and saturation fully offline, with reset/apply controls.
-- Paint, hide, undo, and clear a visual mask overlay.
-- Save the current bitmap to Pictures/EditGeek.
-- Provide an explicit AI-unavailable state; no remote upload is performed by the placeholder AI engine. Export saves the current locally adjusted bitmap.
+- Import an image through Android's system photo picker, apply EXIF orientation, and downsample to a 2048 px maximum dimension.
+- Rotate images, paint/hide/undo/clear a visual brush overlay, and save to `Pictures/EditGeek`.
+- Offline brightness, contrast, and saturation with reset/apply controls.
+- Prompt-based remote image editing using Pollinations `POST https://gen.pollinations.ai/v1/images/edits` with the `kontext` model.
+- Personal API key input is held in screen memory only; it is not persisted or hardcoded into the APK.
+- API error handling for invalid key, exhausted budget, rate limits, server errors, and invalid image responses.
 
-## Not yet implemented
+## Important limitations
 
-The local diffusion/inpainting model and real object removal, generative refill, image generation, object replacement, and remote inference API are not implemented in this native scaffold. The native app is currently a usable offline photo-adjustment editor, not a finished AI editor. The painted mask remains a visual guide only and is not yet converted into an inference mask. Do not present the mask overlay as an AI-edited result. A model/runtime and a documented, consent-based inference contract must be integrated and benchmarked before those features can be enabled.
+- Pollinations requires a valid API key and may require available account budget/quota; it is not guaranteed to be permanently free.
+- AI Edit uploads the selected bitmap to Pollinations only after the user taps AI Edit. Review the provider's terms and privacy policy before sending private photos.
+- The brush overlay is currently visual-only and is **not** sent as a model mask. Prompt edits affect the image as a whole; precise mask-based inpainting/object removal is not yet implemented.
+- No device-specific performance testing or signed release APK is claimed.
 
 ## Build
 
-The GitHub Actions workflow at `.github/workflows/build-native-apk.yml` builds and tests the project in `android-native/`. It publishes a debug APK as a workflow artifact after successful checks.
+The workflow at `.github/workflows/build-native-apk.yml` runs unit tests, Android lint, assembles a debug APK, and uploads it as a workflow artifact after successful checks.
 
-The prompt editor preserves spaces while typing and limits input to 500 Unicode code points. The editor is vertically scrollable and handles the software keyboard. Image decode failures are caught and shown as a user-facing message.
-
-Minimum Android version is API 29. The project targets Android 15 / API 35 and uses JDK 17.
+Minimum Android version is API 29. The project targets API 35 and uses JDK 17.
