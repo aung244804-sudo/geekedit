@@ -22,8 +22,21 @@ class MaskRulesTest {
     }
 
     @Test
-    fun promptIsTrimmedAndLimited() {
+    fun promptPreservesSpacesWhileTyping() {
+        assertEquals("remove ", MaskRules.limitPromptInput("remove "))
         assertEquals("remove object", MaskRules.normalizedPrompt("  remove object  "))
-        assertEquals(500, MaskRules.normalizedPrompt("x".repeat(700)).length)
+    }
+
+    @Test
+    fun promptLimitDoesNotSplitEmojiSurrogatePairs() {
+        val prompt = "a".repeat(499) + "😀" + "z"
+        val limited = MaskRules.limitPromptInput(prompt)
+        assertEquals(500, limited.codePointCount(0, limited.length))
+        assertTrue(limited.endsWith("😀"))
+    }
+
+    @Test
+    fun promptIsLimitedToFiveHundredCodePoints() {
+        assertEquals(500, MaskRules.limitPromptInput("x".repeat(700)).length)
     }
 }
