@@ -4,12 +4,14 @@ import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -20,13 +22,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -43,6 +46,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +57,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.exifinterface.media.ExifInterface
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -95,24 +100,26 @@ private fun EditorScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var prompt by remember { mutableStateOf("") }
-    var showMask by remember { mutableStateOf(true) }
+    var prompt by rememberSaveable { mutableStateOf("") }
+    var showMask by rememberSaveable { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
     val strokes = remember { mutableStateListOf<List<Offset>>() }
     val engine = remember { AiEngine() }
 
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val imagePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
         if (uri != null) {
             scope.launch {
                 val decoded = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
+                    runCatching { decodeOrientedBitmap(context, uri) }.getOrNull()
                 }
                 if (decoded != null) {
                     bitmap = decoded
                     strokes.clear()
                     showMask = true
                 } else {
-                    Toast.makeText(context, "Could not open this image.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Could not open this image. Please choose another photo.", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -120,7 +127,7 @@ private fun EditorScreen() {
 
     Surface(modifier = Modifier.fillMaxSize(), color = Ink) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 16.dp),
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 18.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -134,7 +141,7 @@ private fun EditorScreen() {
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = { imagePicker.launch("image/*") }, modifier = Modifier.weight(1f)) {
+                Button(onClick = { imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.weight(1f)) {
                     Text(if (bitmap == null) "Import photo" else "Change photo")
                 }
                 OutlinedButton(
@@ -153,7 +160,7 @@ private fun EditorScreen() {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .height(280.dp)
                     .clip(RoundedCornerShape(22.dp))
                     .background(Panel),
                 contentAlignment = Alignment.Center
@@ -219,18 +226,23 @@ private fun EditorScreen() {
 
             OutlinedTextField(
                 value = prompt,
-                onValueChange = { prompt = MaskRules.normalizedPrompt(it) },
+                onValueChange = { prompt = MaskRules.limitPromptInput(it) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Describe the edit") },
                 placeholder = { Text("Remove the sign and refill the wall…") },
-                supportingText = { Text("Up to 500 characters · AI result generation is not connected yet") },
+                supportingText = { Text("${prompt.codePointCount(0, prompt.length)}/500 characters · AI generation is not connected yet") },
                 maxLines = 2
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(
                     onClick = {
-                        Toast.makeText(context, engine.unavailableMessage(), Toast.LENGTH_LONG).show()
+                        val validatedPrompt = MaskRules.normalizedPrompt(prompt)
+                        if (validatedPrompt.isBlank()) {
+                            Toast.makeText(context, "Describe the edit first.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, engine.unavailableMessage(), Toast.LENGTH_LONG).show()
+                        }
                     },
                     modifier = Modifier.weight(1.2f),
                     colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Ink)
@@ -291,5 +303,48 @@ private fun saveBitmap(context: android.content.Context, bitmap: Bitmap): Boolea
         }
     } catch (_: Exception) {
         false
+    }
+}
+
+
+/**
+ * Decode a bounded-size bitmap to avoid allocating several hundred megabytes for
+ * very large camera images. EXIF orientation is applied before the bitmap is shown
+ * or saved, so portrait photos retain their expected orientation.
+ */
+private fun decodeOrientedBitmap(context: android.content.Context, uri: Uri): Bitmap? {
+    val resolver = context.contentResolver
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: return null
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    val maxDimension = 2048
+    var sampleSize = 1
+    while (bounds.outWidth / sampleSize > maxDimension || bounds.outHeight / sampleSize > maxDimension) {
+        sampleSize *= 2
+    }
+    val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+    val decoded = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) } ?: return null
+    val orientation = resolver.openInputStream(uri)?.use { ExifInterface(it).getAttributeInt(
+        ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
+    ) } ?: ExifInterface.ORIENTATION_NORMAL
+
+    val matrix = Matrix()
+    when (orientation) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
+        ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
+        ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.postRotate(90f); matrix.preScale(-1f, 1f) }
+        ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.preScale(-1f, 1f) }
+    }
+    if (matrix.isIdentity) return decoded
+    return try {
+        Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true).also {
+            if (it !== decoded) decoded.recycle()
+        }
+    } catch (_: OutOfMemoryError) {
+        decoded
     }
 }
