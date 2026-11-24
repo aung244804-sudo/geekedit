@@ -44,20 +44,19 @@ jobs:
         with:
           packages: "platform-tools platforms;android-35 build-tools;35.0.0"
 
-      - name: Set up Gradle cache
+      - name: Set up pinned Gradle 8.9 and cache
         uses: gradle/actions/setup-gradle@v4
-
-      - name: Generate Gradle wrapper
-        run: gradle wrapper --gradle-version 8.9 --distribution-type bin
+        with:
+          gradle-version: "8.9"
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --no-daemon
+        run: gradle testDebugUnitTest --no-daemon
 
       - name: Run Android lint
-        run: ./gradlew lintDebug --no-daemon
+        run: gradle lintDebug --no-daemon
 
       - name: Assemble debug APK
-        run: ./gradlew assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
