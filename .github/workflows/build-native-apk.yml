@@ -1,0 +1,83 @@
+name: Native Compose Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - feature/native-compose-editor
+    paths:
+      - "android-native/**"
+      - ".github/workflows/build-native-apk.yml"
+  pull_request:
+    paths:
+      - "android-native/**"
+      - ".github/workflows/build-native-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Test, emulator smoke test, and build native debug APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: android-native
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+
+      - name: Set up pinned Gradle 8.9 and cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Run unit tests
+        run: gradle testDebugUnitTest --no-daemon
+
+      - name: Run Android lint
+        run: gradle lintDebug --no-daemon
+
+      - name: Assemble debug APK
+        run: gradle assembleDebug --no-daemon
+
+      - name: Install and launch app on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell am start -W -n com.editgeek.nativeapp.debug/.MainActivity
+            sleep 5
+            adb shell pidof com.editgeek.nativeapp.debug
+
+      - name: Upload debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edit-geek-native-debug-apk
+          path: android-native/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+          retention-days: 14
