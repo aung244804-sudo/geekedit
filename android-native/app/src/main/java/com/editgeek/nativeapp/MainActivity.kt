@@ -46,7 +46,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -99,11 +99,12 @@ private fun EditGeekTheme(content: @Composable () -> Unit) {
 private fun EditorScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var prompt by rememberSaveable { mutableStateOf("") }
-    var showMask by rememberSaveable { mutableStateOf(true) }
-    var busy by remember { mutableStateOf(false) }
-    val strokes = remember { mutableStateListOf<List<Offset>>() }
+    val editorState: EditorViewModel = viewModel()
+    var bitmap by editorState.bitmapState
+    var prompt by editorState.promptState
+    var showMask by editorState.showMaskState
+    var busy by editorState.busyState
+    val strokes = editorState.strokes
     val engine = remember { AiEngine() }
 
     val imagePicker = rememberLauncherForActivityResult(
