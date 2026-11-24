@@ -277,6 +277,7 @@ private fun EditorScreen() {
 }
 
 private fun saveBitmap(context: android.content.Context, bitmap: Bitmap): Boolean {
+    var pendingUri: android.net.Uri? = null
     return try {
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, "EditGeek-${System.currentTimeMillis()}.png")
@@ -285,66 +286,29 @@ private fun saveBitmap(context: android.content.Context, bitmap: Bitmap): Boolea
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
         val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        if (uri == null) {
+            ?: return false
+        pendingUri = uri
+        val written = context.contentResolver.openOutputStream(uri)?.use { output ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+        } ?: false
+        if (!written) {
+            context.contentResolver.delete(uri, null, null)
+            pendingUri = null
             false
         } else {
-            val written = context.contentResolver.openOutputStream(uri)?.use { output ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
-            } ?: false
-            if (written) {
-                val completed = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
-                context.contentResolver.update(uri, completed, null, null)
+            val completed = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
+            val updated = context.contentResolver.update(uri, completed, null, null)
+            if (updated > 0) {
+                pendingUri = null
                 true
             } else {
                 context.contentResolver.delete(uri, null, null)
+                pendingUri = null
                 false
             }
         }
     } catch (_: Exception) {
+        pendingUri?.let { uri -> runCatching { context.contentResolver.delete(uri, null, null) } }
         false
-    }
-}
-
-
-/**
- * Decode a bounded-size bitmap to avoid allocating several hundred megabytes for
- * very large camera images. EXIF orientation is applied before the bitmap is shown
- * or saved, so portrait photos retain their expected orientation.
- */
-private fun decodeOrientedBitmap(context: android.content.Context, uri: Uri): Bitmap? {
-    val resolver = context.contentResolver
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    val boundsStream = resolver.openInputStream(uri) ?: return null
-    boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-
-    val maxDimension = 2048
-    var sampleSize = 1
-    while (bounds.outWidth / sampleSize > maxDimension || bounds.outHeight / sampleSize > maxDimension) {
-        sampleSize *= 2
-    }
-    val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-    val decoded = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) } ?: return null
-    val orientation = resolver.openInputStream(uri)?.use { ExifInterface(it).getAttributeInt(
-        ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
-    ) } ?: ExifInterface.ORIENTATION_NORMAL
-
-    val matrix = Matrix()
-    when (orientation) {
-        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
-        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
-        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
-        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
-        ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
-        ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.postRotate(90f); matrix.preScale(-1f, 1f) }
-        ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.preScale(-1f, 1f) }
-    }
-    if (matrix.isIdentity) return decoded
-    return try {
-        Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true).also {
-            if (it !== decoded) decoded.recycle()
-        }
-    } catch (_: OutOfMemoryError) {
-        decoded
     }
 }
